@@ -18,8 +18,11 @@ return new class extends Migration
             $table->integer('price');
             $table->string('image')->nullable();
             $table->integer('stock')->default(0);
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
             $table->timestamps();
         });
+
+
     }
 
     /**

@@ -3,15 +3,56 @@
 namespace App\Http\Controllers;
 
 use App\Models\Product;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class ProductController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $products = Product::latest()->paginate(10);
-        return view('products.index', compact('products'));
+        $query = Product::query();
+
+        // Cek apakah ada input search
+        if ($request->has('search') && $request->search != '') {
+            $search = $request->search;
+            $query->where('name', 'like', "%{$search}%")
+                ->orWhere('description', 'like', "%{$search}%");
+        }
+
+        $totalProducts = Product::count();
+        $lowStockCount = Product::where('stock', '<=', 10)->count();
+        $activeUsers = User::whereNotNull('email_verified_at')->count();
+
+        // Urutkan terbaru dan paginasi
+        $products = $query->latest()->paginate(10);
+
+        // Supaya query search tetap di URL pagination
+        $products->appends($request->all());
+
+        return view('products.index', compact(
+            'products',
+            'totalProducts',
+            'lowStockCount',
+            'activeUsers'
+        ));
+    }
+
+    public function list(Request $request)
+    {
+        $query = Product::query();
+
+        if ($request->has('search') && $request->search != '') {
+            $query->where('name', 'like', "%{$request->search}%")
+                ->orWhere('description', 'like', "%{$request->search}%");
+        }
+
+        $products = $query->latest()->paginate(10);
+        $products->appends($request->all());
+
+        return view('products.list', compact(
+            'products'
+        ));
     }
 
     public function create()
@@ -21,11 +62,13 @@ class ProductController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        $user = auth()->user();
+        $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'price' => 'required|numeric',
             'image' => 'nullable|image|max:2048',
+            'stock' => 'nullable|numeric'
         ]);
 
         if ($request->hasFile('image')) {
@@ -33,7 +76,13 @@ class ProductController extends Controller
             $validated['image'] = $path;
         }
 
-        Product::create($validated);
+        Product::create([
+            'name' => $request->name,
+            'description' => $request->description,
+            'price' => $request->price,
+            'stock' => $request->stock,
+            'user_id' => $user->id
+        ]);
 
         return redirect()->route('products.index')->with('success', 'Product created successfully.');
     }
@@ -50,6 +99,7 @@ class ProductController extends Controller
             'description' => 'nullable|string',
             'price' => 'required|numeric',
             'image' => 'nullable|image|max:2048',
+            'stock' => 'nullable|numeric',
         ]);
 
         if ($request->hasFile('image')) {
